@@ -13,6 +13,8 @@ struct Engine {
 // engine functions exposed to javascript
 #[wasm_bindgen]
 impl Engine {
+
+    #[allow(unused)] // compiler thinks "static_method_of" is a (unused) variable for some reason
     #[wasm_bindgen(static_method_of = Engine)]
     pub async fn create() -> Engine {
         set_panic_hook(); // set panic hook (if enabled) for better wasm error messages
