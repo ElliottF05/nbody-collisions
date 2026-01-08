@@ -7,17 +7,17 @@ use crate::utils::set_panic_hook;
 #[wasm_bindgen]
 struct Engine {
     simulation: Simulation,
-    renderer: Renderer,
+    renderer: Renderer<'static>,
 }
 
 // engine functions exposed to javascript
 #[wasm_bindgen]
 impl Engine {
-    #[wasm_bindgen(constructor)]
-    pub fn new() -> Engine {
+    #[wasm_bindgen(static_method_of = Engine)]
+    pub async fn create() -> Engine {
         set_panic_hook(); // set panic hook (if enabled) for better wasm error messages
         let simulation = Simulation::new();
-        let renderer = Renderer::new();
+        let renderer = Renderer::new().await;
         Engine { simulation, renderer }
     }
 
