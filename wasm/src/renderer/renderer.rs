@@ -1,3 +1,4 @@
+use log::info;
 use wasm_bindgen::JsCast;
 
 use crate::renderer::wgpu_state::WgpuState;
@@ -9,6 +10,8 @@ const SHADER_CODE: &str = include_str!("shaders/render.wgsl");
 pub struct Renderer<'window> {
     // wgpu state and resources
     wgpu_state: WgpuState<'window>,
+
+    // render pipeline and bind groups/layouts
     render_pipeline: wgpu::RenderPipeline,
     bind_group_layout: wgpu::BindGroupLayout,
     bind_group: wgpu::BindGroup,
@@ -23,10 +26,8 @@ pub struct Renderer<'window> {
 }
 
 impl Renderer<'_> {
-
     /// Creates a new Renderer instance.
     pub async fn new() -> Self {
-
         // create wgpu state first (requires canvas element)
         let window = web_sys::window().expect("no global window exists");
         let document = window.document().expect("should have a document on window");
@@ -38,6 +39,7 @@ impl Renderer<'_> {
 
         let (width, height) = (canvas.width(), canvas.height());
         let wgpu_state = WgpuState::new(canvas.clone()).await;
+        wgpu_state.configure_surface(width, height);
 
 
         // create buffers
@@ -143,8 +145,6 @@ impl Renderer<'_> {
             cache: None, 
         });
 
-        wgpu_state.configure_surface(width, height);
-
         Renderer {
             wgpu_state,
             render_pipeline,
@@ -155,31 +155,6 @@ impl Renderer<'_> {
             capacity_bodies,
             bodies_buffer,
         }
-    }
-
-    // todo: change [f32; 4] to Body struct when defined
-    /// Fills the bodies buffer with given bodies data, so it can be rendered by the GPU.
-    pub fn fill_bodies_buffer(&mut self, bodies: &Vec<[f32; 4]>) {
-        self.uniforms.num_bodies = bodies.len() as u32;
-
-        // resize buffer if needed
-        if self.uniforms.num_bodies > self.capacity_bodies {
-            self.capacity_bodies = (self.uniforms.num_bodies as f32 * 1.5).ceil() as u32;
-            self.bodies_buffer = self.wgpu_state.device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("bodies buffer"),
-                size: (self.capacity_bodies as u64) * std::mem::size_of::<[f32; 4]>() as u64,
-                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            });
-            self.recreate_bind_group(); // bind group must be recreated to use new buffer
-        }
-
-        // upload data to buffer
-        let data_bytes = bytemuck::cast_slice(&bodies[..]);
-        self.wgpu_state.queue.write_buffer(&self.bodies_buffer, 0, data_bytes);
-
-        // update uniform buffer with metadata (in case num_bodies changed)
-        self.update_uniforms_buffer();
     }
 
     fn update_uniforms_buffer(&self) {
@@ -248,6 +223,31 @@ impl Renderer<'_> {
         frame.present();
     }
 
+    // todo: change [f32; 4] to Body struct when defined
+    /// Fills the bodies buffer with given bodies data, so it can be rendered by the GPU.
+    pub fn fill_bodies_buffer(&mut self, bodies: &Vec<[f32; 4]>) {
+        self.uniforms.num_bodies = bodies.len() as u32;
+
+        // resize buffer if needed
+        if self.uniforms.num_bodies > self.capacity_bodies {
+            self.capacity_bodies = (self.uniforms.num_bodies as f32 * 1.5).ceil() as u32;
+            self.bodies_buffer = self.wgpu_state.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("bodies buffer"),
+                size: (self.capacity_bodies as u64) * std::mem::size_of::<[f32; 4]>() as u64,
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+            self.recreate_bind_group(); // bind group must be recreated to use new buffer
+        }
+
+        // upload data to buffer
+        let data_bytes = bytemuck::cast_slice(&bodies[..]);
+        self.wgpu_state.queue.write_buffer(&self.bodies_buffer, 0, data_bytes);
+
+        // update uniform buffer with metadata (in case num_bodies changed)
+        self.update_uniforms_buffer();
+    }
+
     /// Resizes the renderer to the given width and height (in pixels) of the viewport.
     pub fn resize(&mut self, width: u32, height: u32) {
         self.uniforms.view_port = [width, height];
@@ -256,6 +256,25 @@ impl Renderer<'_> {
 
         // reconfigure surface and update uniforms buffer
         self.wgpu_state.configure_surface(width, height);
+        self.update_uniforms_buffer();
+    }
+
+    /// Zooms the camera in or out, centered on the given pixel coordinates (in range [0, view_port.x/y]).
+    pub fn zoom_camera(&mut self, px: f32, py: f32, zoom_factor: f32) {
+        let cam_half_size = &mut self.uniforms.cam_half_size;
+        let cam_center = &mut self.uniforms.cam_center;
+
+        let ndc_x = (px / self.uniforms.view_port[0] as f32) * 2.0 - 1.0;
+        let ndc_y = -((py / self.uniforms.view_port[1] as f32) * 2.0 - 1.0);
+
+        let world_x = cam_center[0] + ndc_x * cam_half_size[0];
+        let world_y = cam_center[1] + ndc_y * cam_half_size[1];
+        
+        cam_half_size[0] /= zoom_factor;
+        cam_half_size[1] /= zoom_factor;
+
+        cam_center[0] = world_x - ndc_x * cam_half_size[0];
+        cam_center[1] = world_y - ndc_y * cam_half_size[1];
         self.update_uniforms_buffer();
     }
 }

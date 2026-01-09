@@ -32,6 +32,10 @@ impl Engine {
     pub fn resize(&mut self, width: u32, height: u32) {
         self.renderer.resize(width, height);
     }
+
+    pub fn zoom_camera(&mut self, px: f32, py: f32, zoom_factor: f32) {
+        self.renderer.zoom_camera(px, py, zoom_factor);
+    }
 }
 
 // internal engine functions

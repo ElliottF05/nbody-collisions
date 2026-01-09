@@ -16,6 +16,8 @@ export class InteractionHandler {
 
         this.resizeCanvasToDisplaySize();
         this.addResizeListener();
+
+        this.addZoomListener();
     }
 
     private addResizeListener() {
@@ -44,5 +46,27 @@ export class InteractionHandler {
             // notify the engine about the resize
             this.engine.resize(width, height);
         }
+    }
+
+    private clientToCanvasCoords(clientX: number, clientY: number): [number, number] {
+        const rect = this.canvas.getBoundingClientRect();
+        const dpr = window.devicePixelRatio || 1;
+        const canvasX = (clientX - rect.left) * dpr;
+        const canvasY = (clientY - rect.top) * dpr;
+        return [canvasX, canvasY];
+    }
+
+    private addZoomListener() {
+        this.canvas.addEventListener('wheel', (event) => {
+            event.preventDefault();
+
+            const zoomSpeed = 0.0015;
+            const zoomFactor = Math.exp(-event.deltaY * zoomSpeed);
+
+            const [px, py] = this.clientToCanvasCoords(event.clientX, event.clientY);
+
+            // notify the engine about the zoom
+            this.engine.zoom_camera(px, py, zoomFactor);
+        }, { passive: false });
     }
 }
