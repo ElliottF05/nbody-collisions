@@ -2,7 +2,6 @@ use wasm_bindgen::prelude::*;
 
 use crate::simulation::Simulation;
 use crate::renderer::Renderer;
-use crate::utils::set_panic_hook;
 
 #[wasm_bindgen]
 struct Engine {
@@ -17,7 +16,6 @@ impl Engine {
     #[allow(unused)] // compiler thinks "static_method_of" is a (unused) variable for some reason
     #[wasm_bindgen(static_method_of = Engine)]
     pub async fn create() -> Engine {
-        set_panic_hook(); // set panic hook (if enabled) for better wasm error messages
         let simulation = Simulation::new();
         let renderer = Renderer::new().await;
         Engine { simulation, renderer }
@@ -29,6 +27,10 @@ impl Engine {
 
     pub fn render(&self) {
         self.renderer.render();
+    }
+
+    pub fn resize(&mut self, width: u32, height: u32) {
+        self.renderer.resize(width, height);
     }
 }
 

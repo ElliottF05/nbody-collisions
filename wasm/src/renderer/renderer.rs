@@ -1,9 +1,11 @@
 use wasm_bindgen::JsCast;
+use log::debug;
 
 const SHADER_CODE: &str = include_str!("shaders/render.wgsl");
 
 pub struct Renderer<'window> {
     surface: wgpu::Surface<'window>,
+    adapter: wgpu::Adapter,
     device: wgpu::Device,
     queue: wgpu::Queue,
     render_pipeline: wgpu::RenderPipeline,
@@ -90,6 +92,7 @@ impl Renderer<'_> {
 
         Renderer {
             surface,
+            adapter,
             device,
             queue,
             render_pipeline,
@@ -129,12 +132,19 @@ impl Renderer<'_> {
                 occlusion_query_set: None, 
                 multiview_mask: None, 
             });
-
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.draw(0..3, 0..1);
         }
 
         self.queue.submit([encoder.finish()]);
         frame.present();
+    }
+
+    pub fn resize(&self, width: u32, height: u32) {
+        let config = self
+            .surface
+            .get_default_config(&self.adapter, width, height)
+            .expect("failed to get default config");
+        self.surface.configure(&self.device, &config);
     }
 }
