@@ -1,14 +1,19 @@
 use wasm_bindgen::JsCast;
-use log::debug;
+
+use crate::renderer::wgpu_state::WgpuState;
 
 const SHADER_CODE: &str = include_str!("shaders/render.wgsl");
 
 pub struct Renderer<'window> {
-    surface: wgpu::Surface<'window>,
-    adapter: wgpu::Adapter,
-    device: wgpu::Device,
-    queue: wgpu::Queue,
+    // wgpu state and resources
+    wgpu_state: WgpuState<'window>,
     render_pipeline: wgpu::RenderPipeline,
+
+    // camera state
+    view_port: (u32, u32),
+    cam_center: (f32, f32),
+    cam_half_size: (f32, f32),
+
 }
 
 impl Renderer<'_> {
@@ -21,49 +26,23 @@ impl Renderer<'_> {
             .dyn_into::<web_sys::HtmlCanvasElement>()
             .expect("element should be a canvas");
 
-        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::from_env_or_default());
-
         let (width, height) = (canvas.width(), canvas.height());
-        let surface_target = wgpu::SurfaceTarget::Canvas(canvas);
-        let surface = instance
-            .create_surface(surface_target)
-            .expect("failed to create surface from canvas");
-
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::HighPerformance,
-                compatible_surface: Some(&surface),
-                force_fallback_adapter: false,
-            })
-            .await
-            .expect("failed to find an appropriate adapter");
+        let wgpu_state = WgpuState::new(canvas.clone()).await;
             
-        let (device, queue) = adapter
-            .request_device(&wgpu::DeviceDescriptor {
-                label: None,
-                required_features: wgpu::Features::empty(),
-                required_limits: wgpu::Limits::default(),
-                memory_hints: wgpu::MemoryHints::default(),
-                experimental_features: wgpu::ExperimentalFeatures::disabled(),
-                trace: wgpu::Trace::Off,
-            })
-            .await
-            .expect("failed to create device");
-            
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor { 
+        let shader = wgpu_state.device.create_shader_module(wgpu::ShaderModuleDescriptor { 
             label: None, 
             source: wgpu::ShaderSource::Wgsl(SHADER_CODE.into())
         });
 
-        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        let pipeline_layout = wgpu_state.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: None,
             bind_group_layouts: &[],
             immediate_size: 0,
         });
 
-        let swapchain_format = surface.get_capabilities(&adapter).formats[0];
+        let swapchain_format = wgpu_state.surface.get_capabilities(&wgpu_state.adapter).formats[0];
 
-        let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor { 
+        let render_pipeline = wgpu_state.device.create_render_pipeline(&wgpu::RenderPipelineDescriptor { 
             label: None, 
             layout: Some(&pipeline_layout), 
             vertex: wgpu::VertexState {
@@ -85,24 +64,23 @@ impl Renderer<'_> {
             cache: None, 
         });
 
-        let config = surface
-            .get_default_config(&adapter, width, height)
+        let config = wgpu_state.surface
+            .get_default_config(&wgpu_state.adapter, width, height)
             .expect("failed to get default config");
-        surface.configure(&device, &config);
+        wgpu_state.surface.configure(&wgpu_state.device, &config);
 
         Renderer {
-            surface,
-            adapter,
-            device,
-            queue,
+            wgpu_state,
             render_pipeline,
+            view_port: (width, height),
+            cam_center: (0.0, 0.0),
+            cam_half_size: (10.0, 10.0),
         }
     }
 
     /// Renders a new frame to the canvas.
     pub fn render(&self) {
-        let frame = self
-            .surface
+        let frame = self.wgpu_state.surface
             .get_current_texture()
             .expect("failed to acquire next swap chain texture");
 
@@ -110,7 +88,7 @@ impl Renderer<'_> {
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
 
-        let mut encoder = self.device
+        let mut encoder = self.wgpu_state.device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: None,
             });
@@ -136,15 +114,15 @@ impl Renderer<'_> {
             render_pass.draw(0..3, 0..1);
         }
 
-        self.queue.submit([encoder.finish()]);
+        self.wgpu_state.queue.submit([encoder.finish()]);
         frame.present();
     }
 
-    pub fn resize(&self, width: u32, height: u32) {
-        let config = self
-            .surface
-            .get_default_config(&self.adapter, width, height)
-            .expect("failed to get default config");
-        self.surface.configure(&self.device, &config);
+    pub fn resize(&mut self, width: u32, height: u32) {
+        self.view_port = (width, height);
+        let aspect = width as f32 / height as f32;
+        self.cam_half_size = (self.cam_half_size.1 * aspect, self.cam_half_size.1);
+
+        self.wgpu_state.configure_surface(width, height);
     }
 }
