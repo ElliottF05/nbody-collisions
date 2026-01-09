@@ -1,5 +1,6 @@
 use wasm_bindgen::JsCast;
 
+/// Wgpu state and resources (surface, adapter, device, queue)
 pub struct WgpuState<'window> {
     pub surface: wgpu::Surface<'window>,
     pub adapter: wgpu::Adapter,
@@ -45,6 +46,7 @@ impl WgpuState<'_> {
         }
     }
 
+    /// Configures the surface for rendering with given width and height.
     pub fn configure_surface(&self, width: u32, height: u32) {
         let config = self.surface
             .get_default_config(&self.adapter, width, height)
