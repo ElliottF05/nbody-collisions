@@ -10,20 +10,23 @@ pub struct Renderer<'window> {
     // wgpu state and resources
     wgpu_state: WgpuState<'window>,
     render_pipeline: wgpu::RenderPipeline,
+    bind_group_layout: wgpu::BindGroupLayout,
+    bind_group: wgpu::BindGroup,
 
     // uniforms (viewport, cam_center, cam_half_size, num_bodies)
     uniforms: Uniforms,
+    uniforms_buffer: wgpu::Buffer,
 
     // bodies buffer
     capacity_bodies: u32,
     bodies_buffer: wgpu::Buffer,
-
-    // metadata uniforms
-    uniforms_buffer: wgpu::Buffer,
 }
 
 impl Renderer<'_> {
+
+    /// Creates a new Renderer instance.
     pub async fn new() -> Self {
+
         // create wgpu state first (requires canvas element)
         let window = web_sys::window().expect("no global window exists");
         let document = window.document().expect("should have a document on window");
@@ -36,21 +39,90 @@ impl Renderer<'_> {
         let (width, height) = (canvas.width(), canvas.height());
         let wgpu_state = WgpuState::new(canvas.clone()).await;
 
-        // create render pipeline 
+
+        // create buffers
+        let uniforms = Uniforms {
+            view_port: [width, height],
+            cam_center: [0.0, 0.0],
+            cam_half_size: [10.0, 10.0],
+            num_bodies: 0,
+            _pad: 0,
+        };
+
+        // initialize bodies buffer
+        let capacity_bodies = 1;
+        let bodies_buffer = wgpu_state.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("bodies buffer"),
+            size: (capacity_bodies as u64) * std::mem::size_of::<[f32; 4]>() as u64,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        // initialize uniform buffer
+        let uniforms_buffer = wgpu_state.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("uniforms buffer"),
+            size: std::mem::size_of::<Uniforms>() as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+
+        // create render pipeline and bind group/layout
         let shader = wgpu_state.device.create_shader_module(wgpu::ShaderModuleDescriptor { 
-            label: None, 
+            label: Some("render shader"), 
             source: wgpu::ShaderSource::Wgsl(SHADER_CODE.into())
         });
 
+        let bind_group_layout = wgpu_state.device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("bind group layout"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+            ],
+        });
+
+        let bind_group = wgpu_state.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("bind group"),
+            layout: &bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: uniforms_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: bodies_buffer.as_entire_binding(),
+                },
+            ],
+        });
+
         let pipeline_layout = wgpu_state.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: None,
-            bind_group_layouts: &[],
+            label: Some("pipeline layout"),
+            bind_group_layouts: &[&bind_group_layout],
             immediate_size: 0,
         });
 
         let swapchain_format = wgpu_state.surface.get_capabilities(&wgpu_state.adapter).formats[0];
         let render_pipeline = wgpu_state.device.create_render_pipeline(&wgpu::RenderPipelineDescriptor { 
-            label: None, 
+            label: Some("render pipeline"),
             layout: Some(&pipeline_layout), 
             vertex: wgpu::VertexState {
                 module: &shader, 
@@ -73,38 +145,15 @@ impl Renderer<'_> {
 
         wgpu_state.configure_surface(width, height);
 
-        let uniforms = Uniforms {
-            view_port: [width, height],
-            cam_center: [0.0, 0.0],
-            cam_half_size: [10.0, 10.0],
-            num_bodies: 0,
-            _pad: 0,
-        };
-
-        // initialize bodies buffer
-        let capacity_bodies = 0;
-        let bodies_buffer = wgpu_state.device.create_buffer(&wgpu::BufferDescriptor {
-            label: None,
-            size: 0, 
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-
-        // initialize uniform buffer
-        let uniforms_buffer = wgpu_state.device.create_buffer(&wgpu::BufferDescriptor {
-            label: None,
-            size: std::mem::size_of::<Uniforms>() as u64,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-
         Renderer {
             wgpu_state,
             render_pipeline,
+            bind_group_layout,
+            bind_group,
             uniforms,
+            uniforms_buffer,
             capacity_bodies,
             bodies_buffer,
-            uniforms_buffer,
         }
     }
 
@@ -117,11 +166,12 @@ impl Renderer<'_> {
         if self.uniforms.num_bodies > self.capacity_bodies {
             self.capacity_bodies = (self.uniforms.num_bodies as f32 * 1.5).ceil() as u32;
             self.bodies_buffer = self.wgpu_state.device.create_buffer(&wgpu::BufferDescriptor {
-                label: None,
+                label: Some("bodies buffer"),
                 size: (self.capacity_bodies as u64) * std::mem::size_of::<[f32; 4]>() as u64,
                 usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
             });
+            self.recreate_bind_group(); // bind group must be recreated to use new buffer
         }
 
         // upload data to buffer
@@ -137,8 +187,28 @@ impl Renderer<'_> {
         self.wgpu_state.queue.write_buffer(&self.uniforms_buffer, 0, uniforms_bytes);
     }
 
+    fn recreate_bind_group(&mut self) {
+        self.bind_group = self.wgpu_state.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("bind group"),
+            layout: &self.bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: self.uniforms_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: self.bodies_buffer.as_entire_binding(),
+                },
+            ],
+        });
+    }
+
     /// Renders a new frame to the canvas.
-    pub fn render(&self) {
+    pub fn render(&mut self) {
+        // todo: temp, remove later
+        self.fill_bodies_buffer(&vec![[0.0, 0.0, 0.5, 1.0], [3.0, 3.0, 0.5, 1.0]]);
+
         let frame = self.wgpu_state.surface
             .get_current_texture()
             .expect("failed to acquire next swap chain texture");
@@ -149,12 +219,12 @@ impl Renderer<'_> {
 
         let mut encoder = self.wgpu_state.device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: None,
+                label: Some("command encoder"),
             });
         
         {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor { 
-                label: None, 
+                label: Some("render pass"), 
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment { 
                     view: &view, 
                     depth_slice: None,
@@ -170,7 +240,8 @@ impl Renderer<'_> {
                 multiview_mask: None, 
             });
             render_pass.set_pipeline(&self.render_pipeline);
-            render_pass.draw(0..3, 0..1);
+            render_pass.set_bind_group(0, &self.bind_group, &[]);
+            render_pass.draw(0..6, 0..self.uniforms.num_bodies);
         }
 
         self.wgpu_state.queue.submit([encoder.finish()]);

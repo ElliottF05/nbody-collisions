@@ -1,5 +1,3 @@
-use wasm_bindgen::JsCast;
-
 /// Wgpu state and resources (surface, adapter, device, queue)
 pub struct WgpuState<'window> {
     pub surface: wgpu::Surface<'window>,
@@ -28,7 +26,7 @@ impl WgpuState<'_> {
             
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
-                label: None,
+                label: Some("wgpu device"),
                 required_features: wgpu::Features::empty(),
                 required_limits: wgpu::Limits::default(),
                 memory_hints: wgpu::MemoryHints::default(),

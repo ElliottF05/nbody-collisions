@@ -1,5 +1,6 @@
 use bytemuck::{Pod, Zeroable};
 
+/// Uniforms struct for passing data to shaders.
 #[repr(C)]
 #[derive(Copy, Clone, Pod, Zeroable)]
 pub struct Uniforms {

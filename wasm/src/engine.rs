@@ -25,7 +25,7 @@ impl Engine {
         self.simulation.update(dt);
     }
 
-    pub fn render(&self) {
+    pub fn render(&mut self) {
         self.renderer.render();
     }
 
