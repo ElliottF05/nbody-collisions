@@ -28,13 +28,14 @@ impl Engine {
     pub fn render(&mut self) {
         self.renderer.render();
     }
-
     pub fn resize(&mut self, width: u32, height: u32) {
         self.renderer.resize(width, height);
     }
-
     pub fn zoom_camera(&mut self, px: f32, py: f32, zoom_factor: f32) {
         self.renderer.zoom_camera(px, py, zoom_factor);
+    }
+    pub fn pan_camera(&mut self, delta_x: f32, delta_y: f32) {
+        self.renderer.pan_camera(delta_x, delta_y);
     }
 }
 

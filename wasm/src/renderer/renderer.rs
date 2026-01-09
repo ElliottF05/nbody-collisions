@@ -269,12 +269,22 @@ impl Renderer<'_> {
 
         let world_x = cam_center[0] + ndc_x * cam_half_size[0];
         let world_y = cam_center[1] + ndc_y * cam_half_size[1];
-        
+
         cam_half_size[0] /= zoom_factor;
         cam_half_size[1] /= zoom_factor;
 
         cam_center[0] = world_x - ndc_x * cam_half_size[0];
         cam_center[1] = world_y - ndc_y * cam_half_size[1];
+        self.update_uniforms_buffer();
+    }
+
+    /// Pans the camera by the given delta in pixels.
+    pub fn pan_camera(&mut self, delta_px: f32, delta_py: f32) {
+        let cam_half_size = &self.uniforms.cam_half_size;
+        let delta_x = (delta_px / self.uniforms.view_port[0] as f32) * 2.0 * cam_half_size[0];
+        let delta_y = -(delta_py / self.uniforms.view_port[1] as f32) * 2.0 * cam_half_size[1];
+        self.uniforms.cam_center[0] += delta_x;
+        self.uniforms.cam_center[1] += delta_y;
         self.update_uniforms_buffer();
     }
 }

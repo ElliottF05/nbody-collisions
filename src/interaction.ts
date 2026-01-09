@@ -7,6 +7,11 @@ export class InteractionHandler {
     private canvasFormat: GPUTextureFormat;
     private engine: Engine;
 
+    // interaction state
+    private isMouseDown: boolean;
+    private lastMouseCanvasPos: [number, number];
+
+
     constructor(device: GPUDevice, canvas: HTMLCanvasElement, context: GPUCanvasContext, canvasFormat: GPUTextureFormat, engine: Engine) {
         this.device = device;
         this.canvas = canvas;
@@ -14,10 +19,15 @@ export class InteractionHandler {
         this.canvasFormat = canvasFormat;
         this.engine = engine;
 
-        this.resizeCanvasToDisplaySize();
-        this.addResizeListener();
+        // interaction state
+        this.isMouseDown = false;
+        this.lastMouseCanvasPos = [0, 0];
 
+        this.resizeCanvasToDisplaySize();
+        
+        this.addResizeListener();
         this.addZoomListener();
+        this.addPanListeners();
     }
 
     private addResizeListener() {
@@ -68,5 +78,43 @@ export class InteractionHandler {
             // notify the engine about the zoom
             this.engine.zoom_camera(px, py, zoomFactor);
         }, { passive: false });
+    }
+
+    private addPanListeners() {
+        this.canvas.addEventListener("pointerdown", (e) => {
+            if (e.button !== 0) {
+                return; // must be left mouse button
+            }
+            this.isMouseDown = true;
+            this.lastMouseCanvasPos = this.clientToCanvasCoords(e.clientX, e.clientY);
+            this.canvas.setPointerCapture(e.pointerId);
+        });
+
+        this.canvas.addEventListener("pointermove", (e) => {
+            if (!this.isMouseDown) {
+                return;
+            }
+            const [canvasX, canvasY] = this.clientToCanvasCoords(e.clientX, e.clientY);
+            const deltaX = canvasX - this.lastMouseCanvasPos[0];
+            const deltaY = canvasY - this.lastMouseCanvasPos[1];
+            this.lastMouseCanvasPos = [canvasX, canvasY];
+
+            this.engine.pan_camera(-deltaX, -deltaY);
+        });
+
+        const endPan = (e: PointerEvent) => {
+            if (!this.isMouseDown) {
+                return;
+            }
+            this.isMouseDown = false;
+            try {
+                this.canvas.releasePointerCapture(e.pointerId);
+            } catch {
+                // do nothing
+            }
+        }
+
+        this.canvas.addEventListener("pointerup", endPan);
+        this.canvas.addEventListener("pointercancel", endPan);
     }
 }
