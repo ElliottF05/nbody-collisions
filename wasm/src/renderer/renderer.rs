@@ -1,8 +1,8 @@
-use log::info;
 use wasm_bindgen::JsCast;
 
 use crate::renderer::wgpu_state::WgpuState;
 use crate::renderer::uniforms::Uniforms;
+use crate::simulation;
 
 const SHADER_CODE: &str = include_str!("shaders/render.wgsl");
 
@@ -55,7 +55,7 @@ impl Renderer<'_> {
         let capacity_bodies = 1;
         let bodies_buffer = wgpu_state.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("bodies buffer"),
-            size: (capacity_bodies as u64) * std::mem::size_of::<[f32; 4]>() as u64,
+            size: (capacity_bodies as u64) * std::mem::size_of::<simulation::Body>() as u64,
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -181,9 +181,6 @@ impl Renderer<'_> {
 
     /// Renders a new frame to the canvas.
     pub fn render(&mut self) {
-        // todo: temp, remove later
-        self.fill_bodies_buffer(&vec![[0.0, 0.0, 0.5, 1.0], [3.0, 3.0, 0.5, 1.0]]);
-
         let frame = self.wgpu_state.surface
             .get_current_texture()
             .expect("failed to acquire next swap chain texture");
@@ -225,7 +222,7 @@ impl Renderer<'_> {
 
     // todo: change [f32; 4] to Body struct when defined
     /// Fills the bodies buffer with given bodies data, so it can be rendered by the GPU.
-    pub fn fill_bodies_buffer(&mut self, bodies: &Vec<[f32; 4]>) {
+    pub fn fill_bodies_buffer(&mut self, bodies: &[simulation::Body]) {
         self.uniforms.num_bodies = bodies.len() as u32;
 
         // resize buffer if needed
@@ -233,7 +230,7 @@ impl Renderer<'_> {
             self.capacity_bodies = (self.uniforms.num_bodies as f32 * 1.5).ceil() as u32;
             self.bodies_buffer = self.wgpu_state.device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("bodies buffer"),
-                size: (self.capacity_bodies as u64) * std::mem::size_of::<[f32; 4]>() as u64,
+                size: (self.capacity_bodies as u64) * std::mem::size_of::<simulation::Body>() as u64,
                 usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
             });

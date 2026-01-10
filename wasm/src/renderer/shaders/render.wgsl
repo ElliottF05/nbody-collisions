@@ -8,6 +8,7 @@ struct Uniforms {
 
 struct Body {
     position: vec2f,
+    velocity: vec2f,
     mass: f32,
     radius: f32,
 }

@@ -25,6 +25,10 @@ impl Engine {
         self.simulation.update(dt);
     }
 
+    pub fn transfer_bodies_to_renderer(&mut self) {
+        self.renderer.fill_bodies_buffer(&self.simulation.get_bodies());
+    }
+
     pub fn render(&mut self) {
         self.renderer.render();
     }

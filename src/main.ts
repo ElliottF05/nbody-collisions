@@ -3,7 +3,7 @@ import { initDeviceAndContext } from './gpuSetup';
 import { InteractionHandler } from './interaction';
 
 const FPS = 60;
-const SUBSTEPS = 5;
+const SUBSTEPS = 10;
 const DELTA_TIME = 1 / (FPS * SUBSTEPS);
 
 async function main() {
@@ -16,6 +16,7 @@ async function main() {
         for (let i = 0; i < SUBSTEPS; i++) {
             engine.update(DELTA_TIME);
         }
+        engine.transfer_bodies_to_renderer();
         engine.render();
         requestAnimationFrame(frame);
     }
